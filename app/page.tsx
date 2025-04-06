@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import FileUploader from '../components/FileUploader'
 import FilePreview from '../components/FilePreview'
+import TextInput from '../components/TextInput'
+import TextPreview from '../components/TextPreview'
 import QRCodeGenerator from '../components/QRCodeGenerator'
 import Header from '../components/Header'
 import Link from 'next/link'
@@ -11,15 +13,29 @@ import Link from 'next/link'
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [fileId, setFileId] = useState<string | null>(null)
+  const [sharedText, setSharedText] = useState<string | null>(null)
+  const [textId, setTextId] = useState<string | null>(null)
+  const [shareMode, setShareMode] = useState<'file' | 'text'>('file')
   
   const handleFileUpload = (file: File, id: string) => {
     setUploadedFile(file)
     setFileId(id)
+    setSharedText(null)
+    setTextId(null)
+  }
+
+  const handleTextShare = (text: string, id: string) => {
+    setSharedText(text)
+    setTextId(id)
+    setUploadedFile(null)
+    setFileId(null)
   }
   
   const resetUpload = () => {
     setUploadedFile(null)
     setFileId(null)
+    setSharedText(null)
+    setTextId(null)
   }
 
   return (
@@ -32,12 +48,39 @@ export default function Home() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        {!uploadedFile ? (
+        {!uploadedFile && !sharedText ? (
           <div className="flex flex-col items-center">
-            <FileUploader onFileUpload={handleFileUpload} />
+            <div className="flex space-x-4 mb-8">
+              <button
+                onClick={() => setShareMode('file')}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  shareMode === 'file'
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Share File
+              </button>
+              <button
+                onClick={() => setShareMode('text')}
+                className={`px-6 py-2 rounded-lg transition-colors ${
+                  shareMode === 'text'
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Share Text
+              </button>
+            </div>
+
+            {shareMode === 'file' ? (
+              <FileUploader onFileUpload={handleFileUpload} />
+            ) : (
+              <TextInput onTextShare={handleTextShare} />
+            )}
             
             <div className="mt-8 text-center">
-              <p className="text-sm text-gray-600 mb-2">Want to receive a file?</p>
+              <p className="text-sm text-gray-600 mb-2">Want to receive something?</p>
               <Link 
                 href="/receive" 
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-800 transition-colors"
@@ -51,17 +94,21 @@ export default function Home() {
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <FilePreview file={uploadedFile} />
+            {uploadedFile && <FilePreview file={uploadedFile} />}
+            {sharedText && <TextPreview text={sharedText} />}
             
-            {fileId && (
-              <QRCodeGenerator fileId={fileId} fileName={uploadedFile.name} />
+            {(fileId || textId) && (
+              <QRCodeGenerator 
+                fileId={fileId || textId || ''} 
+                fileName={uploadedFile?.name || 'Shared Text'} 
+              />
             )}
             
             <button 
               onClick={resetUpload}
               className="mt-8 btn-primary"
             >
-              Upload Another File
+              Share Something Else
             </button>
           </div>
         )}

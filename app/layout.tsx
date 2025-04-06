@@ -1,6 +1,7 @@
+import React from 'react';
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import '../styles/globals.css'
+import './globals.css'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -9,8 +10,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Meow Share',
-  description: 'A modern file sharing platform',
+  title: 'Meow Share - Easy File & Text Sharing',
+  description: 'Share files and text snippets easily with Meow Share',
 }
 
 export default function RootLayout({
@@ -19,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={`${inter.className} antialiased`}>{children}</body>
+    <html lang="en" className={`${inter.variable}`}>
+      <body className="antialiased">{children}</body>
     </html>
   )
 } 
