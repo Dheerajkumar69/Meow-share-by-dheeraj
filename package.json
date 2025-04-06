@@ -28,5 +28,10 @@
     "typescript": "^5.2.2",
     "eslint": "^8.52.0",
     "eslint-config-next": "^14.0.0"
-  }
+  },
+  "description": "A sleek, modern web application that allows users to transfer all types of data — including text, images, movies, documents, and any other file formats.",
+  "main": "next.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

@@ -1,1 +1,42 @@
- 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+@layer components {
+  .glassmorphism {
+    @apply bg-white/30 backdrop-blur-md rounded-xl border border-white/20 shadow-lg;
+  }
+  
+  .btn-primary {
+    @apply px-6 py-2 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-lg
+    hover:from-primary-600 hover:to-secondary-600 transition-all duration-300 shadow-md;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500;
+  }
+} 
