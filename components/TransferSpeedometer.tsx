@@ -1,242 +1,318 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { formatFileSize, formatSpeed } from '../utils/fileHandlers';
 
 interface TransferSpeedometerProps {
-  fileSize: number; // in bytes
-  progress: number; // 0-100
-  transferStartTime?: number; // timestamp when transfer started
-  isComplete?: boolean;
+  fileSize: number;
+  progress: number;
+  transferStartTime: number;
+  isComplete: boolean;
+  currentSpeed?: number; // Pass in current speed directly 
 }
 
 export default function TransferSpeedometer({
   fileSize,
   progress,
   transferStartTime,
-  isComplete = false
+  isComplete,
+  currentSpeed = 0
 }: TransferSpeedometerProps) {
-  const [speed, setSpeed] = useState<number>(0); // Speed in bytes per second
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const prevProgressRef = useRef<number>(0);
-  const prevTimestampRef = useRef<number>(Date.now());
-  const animationRef = useRef<number>();
+  const [displayedSpeed, setDisplayedSpeed] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
+  const prevProgressRef = useRef(0);
+  const prevTimestampRef = useRef(0);
+  const animationRef = useRef<number | null>(null);
   
-  // Format bytes to a readable string (KB, MB, etc.)
-  const formatBytes = (bytes: number, decimals = 2): string => {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
-  };
-  
-  // Format speed (bytes/second) to a readable string
-  const formatSpeed = (bytesPerSecond: number): string => {
-    return `${formatBytes(bytesPerSecond)}/s`;
-  };
-  
-  // Format seconds to a readable time string
-  const formatTime = (seconds: number): string => {
-    if (seconds < 60) {
-      return `${Math.ceil(seconds)}s`;
-    } else if (seconds < 3600) {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = Math.ceil(seconds % 60);
-      return `${minutes}m ${remainingSeconds}s`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      return `${hours}h ${minutes}m`;
-    }
-  };
-  
-  // Calculate the angle for the speedometer needle
+  // Calculate speedometer needle position (0-180 degrees)
   const calculateNeedleAngle = (speed: number): number => {
-    // Map the speed to an angle between -120 and 120 degrees
-    // We're using a logarithmic scale to handle wide range of speeds
-    // This is a simplified example; adjust the formula based on your needs
+    // If no speed, return 0
+    if (speed <= 0) return 0;
     
-    // Define the minimum and maximum speeds (bytes/second)
-    const minSpeed = 1024; // 1KB/s
-    const maxSpeed = 10 * 1024 * 1024; // 10MB/s
+    // Use a logarithmic scale for better visualization
+    // 1 KB/s = ~10 degrees
+    // 10 KB/s = ~30 degrees
+    // 100 KB/s = ~60 degrees
+    // 1 MB/s = ~90 degrees
+    // 10 MB/s = ~120 degrees
+    // 100 MB/s = ~150 degrees
+    // >1 GB/s = ~180 degrees
     
-    if (speed <= 0) return -120; // Minimum angle
+    // Convert to KB/s for calculation
+    const kbps = speed / 1024;
     
-    // Use logarithmic scale for better visualization
-    const logMinSpeed = Math.log(minSpeed);
-    const logMaxSpeed = Math.log(maxSpeed);
-    const logSpeed = Math.log(Math.max(speed, minSpeed));
+    if (kbps <= 0) return 0;
     
-    // Calculate the position in the range (0-1)
-    const position = (logSpeed - logMinSpeed) / (logMaxSpeed - logMinSpeed);
+    // Log scale formula: angle = 30 * log10(kbps) + 10
+    const angle = Math.min(180, 30 * Math.log10(kbps) + 10);
     
-    // Map to the angle range (-120 to 120 degrees)
-    const angle = -120 + position * 240;
-    
-    // Clamp the angle between -120 and 120
-    return Math.min(Math.max(angle, -120), 120);
+    return Math.max(0, angle);
   };
   
+  // Format time remaining string
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds < 0 || !isFinite(seconds)) {
+      return 'Calculating...';
+    }
+    
+    if (seconds < 1) {
+      return 'Less than a second';
+    }
+    
+    if (seconds < 60) {
+      return `${Math.round(seconds)} seconds`;
+    }
+    
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    
+    if (minutes < 60) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+    
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    
+    return `${hours}h ${remainingMinutes}m ${remainingSeconds}s`;
+  };
+
+  // Calculate and update speed and time remaining
   useEffect(() => {
-    if (isComplete || progress >= 100) {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+    if (isComplete) {
+      // If transfer is complete, show the final speed
+      setTimeRemaining('Complete');
       return;
     }
     
-    const updateSpeed = (timestamp: number) => {
-      // Calculate time elapsed since last update
-      const timeElapsed = (timestamp - prevTimestampRef.current) / 1000; // in seconds
-      
-      // Only update if enough time has passed to get a meaningful measurement
-      if (timeElapsed >= 0.5) {
-        // Calculate progress change
-        const progressChange = progress - prevProgressRef.current;
+    const now = Date.now();
+    
+    // Use provided speed if available, otherwise calculate
+    if (currentSpeed > 0) {
+      // Update displayed speed with smooth animation
+      const updateSpeed = () => {
+        setDisplayedSpeed(prev => {
+          const diff = currentSpeed - prev;
+          // Smooth transition to the new speed value
+          return prev + diff * 0.1;
+        });
         
-        if (progressChange > 0) {
-          // Calculate bytes transferred in this interval
-          const bytesTransferred = (progressChange / 100) * fileSize;
-          
-          // Calculate speed
-          const currentSpeed = bytesTransferred / timeElapsed;
-          
-          // Update speed with some smoothing
-          setSpeed(prev => {
-            const newSpeed = prev === 0 ? currentSpeed : 0.7 * prev + 0.3 * currentSpeed;
-            
-            // Calculate time remaining based on latest speed
-            const bytesRemaining = fileSize * (1 - progress / 100);
-            const secondsRemaining = bytesRemaining / newSpeed;
-            setTimeRemaining(secondsRemaining);
-            
-            return newSpeed;
-          });
-          
-          // Update refs
-          prevProgressRef.current = progress;
-          prevTimestampRef.current = timestamp;
+        animationRef.current = requestAnimationFrame(updateSpeed);
+      };
+      
+      if (animationRef.current === null) {
+        animationRef.current = requestAnimationFrame(updateSpeed);
+      }
+      
+      // Calculate remaining time based on current speed
+      if (progress < 100 && currentSpeed > 0) {
+        const bytesRemaining = fileSize * (1 - progress / 100);
+        const secondsRemaining = bytesRemaining / currentSpeed;
+        setTimeRemaining(formatTimeRemaining(secondsRemaining));
+      }
+    } else {
+      // Fallback to basic calculation if no speed is provided
+      const elapsedTime = (now - transferStartTime) / 1000; // seconds
+      const bytesTransferred = fileSize * (progress / 100);
+      
+      if (bytesTransferred > 0 && elapsedTime > 0) {
+        const calculatedSpeed = bytesTransferred / elapsedTime;
+        setDisplayedSpeed(calculatedSpeed);
+        
+        if (progress < 100 && calculatedSpeed > 0) {
+          const bytesRemaining = fileSize - bytesTransferred;
+          const secondsRemaining = bytesRemaining / calculatedSpeed;
+          setTimeRemaining(formatTimeRemaining(secondsRemaining));
         }
       }
-      
-      // Request next frame
-      animationRef.current = requestAnimationFrame(updateSpeed);
-    };
+    }
     
-    // Start the animation
-    animationRef.current = requestAnimationFrame(updateSpeed);
+    // Store current values for next calculation
+    prevProgressRef.current = progress;
+    prevTimestampRef.current = now;
     
-    // Cleanup
+    // Cleanup animation frame
     return () => {
-      if (animationRef.current) {
+      if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
-  }, [fileSize, progress, isComplete]);
-  
+  }, [progress, transferStartTime, fileSize, isComplete, currentSpeed]);
+
   // Calculate needle angle based on current speed
-  const needleAngle = calculateNeedleAngle(speed);
+  const needleAngle = calculateNeedleAngle(displayedSpeed);
   
+  // Speed for display, formatted
+  const speedFormatted = formatSpeed(displayedSpeed);
+  
+  // Generate tick marks for the speedometer
+  const speedTicks = [
+    { label: '0', position: 0 },
+    { label: '10KB/s', position: 30 },
+    { label: '100KB/s', position: 60 },
+    { label: '1MB/s', position: 90 },
+    { label: '10MB/s', position: 120 },
+    { label: '100MB/s', position: 150 },
+    { label: '1GB/s', position: 180 },
+  ];
+  
+  // Color zones for the speedometer arc
+  const speedColorZones = [
+    { color: '#ef4444', end: 45 },    // Slow (red)
+    { color: '#f97316', end: 75 },    // Medium (orange)
+    { color: '#eab308', end: 105 },   // Good (yellow)
+    { color: '#22c55e', end: 150 },   // Fast (green)
+    { color: '#3b82f6', end: 180 },   // Super fast (blue)
+  ];
+
   return (
-    <div className="flex flex-col items-center p-4">
-      <div className="w-full max-w-xs relative">
-        {/* Speedometer Dial */}
-        <div className="relative w-full aspect-[2/1]">
-          {/* Semicircle Background */}
-          <div className="absolute top-0 left-0 w-full h-full flex items-end justify-center overflow-hidden">
-            <div className="w-full h-[92%] bg-gradient-to-t from-blue-50 to-blue-100 rounded-t-full relative border-t border-x border-blue-200">
-              {/* Speed Markers */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-[95%] h-[95%] rounded-t-full">
-                  {/* Speed Range Arcs */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden">
-                    <div className="absolute bottom-0 left-1/2 w-[95%] h-[190%] -translate-x-1/2 rounded-full border-8 border-blue-200 border-dashed"></div>
-                  </div>
-                  
-                  {/* Slow Range */}
-                  <div className="absolute bottom-0 left-[5%] h-1/2 w-[30%] overflow-hidden">
-                    <div className="absolute bottom-0 right-0 w-[300%] h-[190%] rounded-full border-8 border-blue-300"></div>
-                  </div>
-                  
-                  {/* Medium Range */}
-                  <div className="absolute bottom-0 left-[35%] h-1/2 w-[30%] overflow-hidden">
-                    <div className="absolute bottom-0 right-0 left-0 w-[300%] h-[190%] -translate-x-[35%] rounded-full border-8 border-blue-500"></div>
-                  </div>
-                  
-                  {/* Fast Range */}
-                  <div className="absolute bottom-0 right-[5%] h-1/2 w-[30%] overflow-hidden">
-                    <div className="absolute bottom-0 left-0 w-[300%] h-[190%] rounded-full border-8 border-blue-700"></div>
-                  </div>
-                </div>
-              </div>
+    <div className="bg-white/80 rounded-lg p-4 shadow-sm">
+      <div className="flex flex-col items-center mb-4">
+        {/* Speedometer dial */}
+        <div className="relative w-full max-w-xs aspect-[2/1] mt-6">
+          {/* Speed color zones */}
+          <svg className="w-full h-full" viewBox="0 0 200 100">
+            <defs>
+              {speedColorZones.map((zone, i) => (
+                <linearGradient
+                  key={`gradient-${i}`}
+                  id={`speed-gradient-${i}`}
+                  x1="0%" y1="0%" x2="100%" y2="0%"
+                >
+                  <stop offset="0%" stopColor={i > 0 ? speedColorZones[i-1].color : zone.color} />
+                  <stop offset="100%" stopColor={zone.color} />
+                </linearGradient>
+              ))}
+            </defs>
+            
+            {/* Background arc */}
+            <path
+              d="M 20 95 A 80 80 0 0 1 180 95"
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth="6"
+              strokeLinecap="round"
+            />
+            
+            {/* Color zone arcs */}
+            {speedColorZones.map((zone, i) => {
+              const prevPos = i > 0 ? speedColorZones[i-1].end : 0;
+              const startAngle = (prevPos * Math.PI) / 180;
+              const endAngle = (zone.end * Math.PI) / 180;
               
-              {/* Speed Labels */}
-              <div className="absolute top-[15%] left-[10%] text-blue-800 text-xs font-semibold">
-                Slow
-              </div>
-              <div className="absolute top-[15%] left-1/2 -translate-x-1/2 text-blue-800 text-xs font-semibold">
-                Medium
-              </div>
-              <div className="absolute top-[15%] right-[10%] text-blue-800 text-xs font-semibold">
-                Fast
-              </div>
+              // Calculate points on the arc
+              const startX = 100 + 80 * Math.sin(startAngle);
+              const startY = 95 - 80 * Math.cos(startAngle);
+              const endX = 100 + 80 * Math.sin(endAngle);
+              const endY = 95 - 80 * Math.cos(endAngle);
               
-              {/* Current Speed Indicator (Needle) */}
-              <motion.div 
-                className="absolute bottom-0 left-1/2 w-1 h-[45%] bg-red-600 rounded-t-full origin-bottom"
-                animate={{ rotate: needleAngle }}
-                transition={{ type: "spring", stiffness: 100, damping: 10 }}
-                style={{ transformOrigin: 'bottom center' }}
-              >
-                <div className="absolute -top-1 -left-1 w-3 h-3 bg-red-600 rounded-full shadow-md"></div>
-              </motion.div>
+              // Determine if this is a large arc (> 180 degrees)
+              const largeArcFlag = zone.end - prevPos > 180 ? 1 : 0;
               
-              {/* Center Point */}
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-blue-500 rounded-full shadow-sm"></div>
-            </div>
-          </div>
+              return (
+                <path
+                  key={`arc-${i}`}
+                  d={`M ${startX} ${startY} A 80 80 0 ${largeArcFlag} 1 ${endX} ${endY}`}
+                  fill="none"
+                  stroke={`url(#speed-gradient-${i})`}
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+              );
+            })}
+            
+            {/* Tick marks */}
+            {speedTicks.map((tick, i) => {
+              const angle = (tick.position * Math.PI) / 180;
+              const tickLength = i % 2 === 0 ? 10 : 5;
+              
+              const outerX = 100 + 88 * Math.sin(angle);
+              const outerY = 95 - 88 * Math.cos(angle);
+              const innerX = 100 + (88 - tickLength) * Math.sin(angle);
+              const innerY = 95 - (88 - tickLength) * Math.cos(angle);
+              
+              const labelX = 100 + 105 * Math.sin(angle);
+              const labelY = 95 - 105 * Math.cos(angle);
+              
+              return (
+                <g key={`tick-${i}`}>
+                  <line
+                    x1={innerX}
+                    y1={innerY}
+                    x2={outerX}
+                    y2={outerY}
+                    stroke="#374151"
+                    strokeWidth="1.5"
+                  />
+                  {i % 2 === 0 && (
+                    <text
+                      x={labelX}
+                      y={labelY}
+                      textAnchor="middle"
+                      alignmentBaseline="middle"
+                      fontSize="7"
+                      fill="#4b5563"
+                      transform={`rotate(${tick.position}, ${labelX}, ${labelY})`}
+                    >
+                      {tick.label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            
+            {/* Speedometer needle */}
+            <g transform={`rotate(${needleAngle}, 100, 95)`}>
+              <circle cx="100" cy="95" r="6" fill="#1f2937" />
+              <path
+                d="M 100 95 L 100 25"
+                stroke="#1f2937"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="100" cy="95" r="3" fill="#ffffff" />
+            </g>
+            
+            {/* Speed display */}
+            <text
+              x="100"
+              y="75"
+              textAnchor="middle"
+              alignmentBaseline="middle"
+              fontSize="10"
+              fontWeight="bold"
+              fill="#1f2937"
+            >
+              {speedFormatted}
+            </text>
+          </svg>
         </div>
         
-        {/* Speed and Time Readout */}
-        <div className="flex flex-col items-center mt-2 gap-2">
-          <div className="flex justify-between w-full px-4">
-            <div className="text-center">
-              <p className="text-xs text-blue-600">Current Speed</p>
-              <p className="text-lg font-bold text-blue-800">{formatSpeed(speed)}</p>
-            </div>
-            
-            <div className="text-center">
-              <p className="text-xs text-blue-600">Time Remaining</p>
-              <p className="text-lg font-bold text-blue-800">
-                {timeRemaining === null 
-                  ? "Calculating..." 
-                  : isComplete 
-                  ? "Complete" 
-                  : formatTime(timeRemaining)}
-              </p>
-            </div>
+        {/* Additional info */}
+        <div className="flex justify-between w-full mt-2 text-sm">
+          <div className="text-blue-800">
+            <span className="font-semibold">Size:</span> {formatFileSize(fileSize)}
           </div>
-          
-          {/* Transfer Progress Bar */}
-          <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden mt-1">
-            <motion.div
-              className="h-full bg-gradient-to-r from-blue-500 to-blue-700"
-              style={{ width: `${progress}%` }}
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          </div>
-          
-          <div className="w-full flex justify-between text-xs text-blue-600 px-1 mt-1">
-            <span>{formatBytes(fileSize * (progress / 100))}</span>
-            <span>of {formatBytes(fileSize)}</span>
-            <span>{progress.toFixed(0)}%</span>
+          <div className="text-blue-800">
+            <span className="font-semibold">ETA:</span> {timeRemaining || 'Calculating...'}
           </div>
         </div>
+      </div>
+      
+      {/* Progress bar */}
+      <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ type: 'spring', stiffness: 50, damping: 10 }}
+        />
+      </div>
+      
+      <div className="flex justify-between text-xs text-gray-600">
+        <span>{isComplete ? 'Complete' : `${Math.round(progress)}%`}</span>
+        <span>{isComplete ? formatFileSize(fileSize) : `${formatFileSize(fileSize * progress / 100)} of ${formatFileSize(fileSize)}`}</span>
       </div>
     </div>
   );

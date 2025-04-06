@@ -1,16 +1,20 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { processFileUpload, FILE_CONFIG, formatFileSize } from '../utils/fileHandlers'
 
 export interface FileUploaderProps {
-  onFileUpload: (file: File) => void
+  onFileUpload: (file: File, fileId: string) => void
   uploadProgress?: number
 }
 
 export default function FileUploader({ onFileUpload, uploadProgress = 0 }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -29,24 +33,48 @@ export default function FileUploader({ onFileUpload, uploadProgress = 0 }: FileU
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0]
-      setSelectedFile(file)
-      onFileUpload(file)
+      handleSelectedFile(file)
     }
   }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0]
-      setSelectedFile(file)
-      onFileUpload(file)
+      handleSelectedFile(file)
+    }
+  }
+
+  const handleSelectedFile = async (file: File) => {
+    setError(null)
+    
+    // Check file size
+    if (file.size > FILE_CONFIG.MAX_FILE_SIZE) {
+      setError(`File size exceeds the maximum allowed size of 3GB`)
+      return
+    }
+    
+    setSelectedFile(file)
+    setIsUploading(true)
+    setProgress(0)
+    
+    try {
+      // Process the file upload with chunking
+      const fileId = await processFileUpload(file, (uploadProgress) => {
+        setProgress(uploadProgress)
+      })
+      
+      // Upload complete
+      onFileUpload(file, fileId)
+    } catch (err) {
+      console.error('Upload failed:', err)
+      setError('Failed to upload file. Please try again.')
+      setIsUploading(false)
     }
   }
 
   const triggerFileInput = () => {
     fileInputRef.current?.click()
   }
-
-  const isUploading = uploadProgress > 0 && uploadProgress < 100
 
   return (
     <div className="w-full">
@@ -56,6 +84,16 @@ export default function FileUploader({ onFileUpload, uploadProgress = 0 }: FileU
         onChange={handleFileInputChange}
         className="hidden"
       />
+      
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm"
+        >
+          {error}
+        </motion.div>
+      )}
       
       <motion.div
         className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
@@ -84,13 +122,23 @@ export default function FileUploader({ onFileUpload, uploadProgress = 0 }: FileU
                   <motion.div
                     className="bg-blue-600 h-2.5 rounded-full"
                     initial={{ width: 0 }}
-                    animate={{ width: `${uploadProgress}%` }}
+                    animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.1, ease: "linear" }}
                   />
                 </div>
-                <p className="text-right text-sm text-blue-600 mt-2">{uploadProgress}%</p>
+                <div className="flex justify-between mt-2 text-sm text-blue-600">
+                  <span>{progress}%</span>
+                  <span>
+                    {selectedFile && formatFileSize(selectedFile.size)}
+                  </span>
+                </div>
               </div>
-              <p className="text-blue-700">Uploading {selectedFile?.name}...</p>
+              <p className="text-blue-700">
+                Uploading {selectedFile?.name}...
+              </p>
+              <p className="text-blue-600 text-sm mt-2">
+                Processing file in chunks for efficient transfer
+              </p>
             </motion.div>
           ) : (
             <motion.div 
@@ -120,7 +168,7 @@ export default function FileUploader({ onFileUpload, uploadProgress = 0 }: FileU
       </motion.div>
       
       <div className="mt-4 text-center text-sm text-blue-600">
-        Max file size: 100MB
+        Max file size: 3GB - Supports any file format
       </div>
     </div>
   )
