@@ -26,8 +26,15 @@
     "@types/react-dom": "^18.2.14",
     "@types/uuid": "^9.0.6",
     "typescript": "^5.2.2",
-    "eslint": "^8.52.0",
-    "eslint-config-next": "^14.0.0"
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.0.0",
+    "rimraf": "^5.0.5",
+    "glob": "^10.3.10"
+  },
+  "overrides": {
+    "rimraf": "^5.0.5",
+    "glob": "^10.3.10",
+    "inflight": "^2.0.0"
   },
   "description": "A sleek, modern web application that allows users to transfer all types of data — including text, images, movies, documents, and any other file formats.",
   "main": "next.config.js",

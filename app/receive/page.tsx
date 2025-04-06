@@ -98,7 +98,7 @@ export default function ReceivePage() {
 
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-500">
-            Don't have a file ID? Ask the sender to share it with you
+            Don&apos;t have a file ID? Ask the sender to share it with you
           </p>
         </div>
       </motion.div>

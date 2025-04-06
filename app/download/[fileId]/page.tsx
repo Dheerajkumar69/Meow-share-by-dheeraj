@@ -24,7 +24,7 @@ export default function DownloadPage() {
         setFileName("Sample File.pdf")
         setFileSize("2.4 MB")
         setLoading(false)
-      } catch (err) {
+      } catch (_error) {
         setError("File not found or has expired")
         setLoading(false)
       }
