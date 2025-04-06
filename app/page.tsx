@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
+import { v4 as uuidv4 } from 'uuid'
 import FileUploader from '../components/FileUploader'
 import FilePreview from '../components/FilePreview'
 import TextInput from '../components/TextInput'
@@ -11,31 +12,43 @@ import Header from '../components/Header'
 import Link from 'next/link'
 
 export default function Home() {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [fileId, setFileId] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
   const [sharedText, setSharedText] = useState<string | null>(null)
   const [textId, setTextId] = useState<string | null>(null)
   const [shareMode, setShareMode] = useState<'file' | 'text'>('file')
   
-  const handleFileUpload = (file: File, id: string) => {
-    setUploadedFile(file)
-    setFileId(id)
-    setSharedText(null)
-    setTextId(null)
+  const handleFileChange = (selectedFile: File) => {
+    setFile(selectedFile)
+    setUploadState('uploading')
+    
+    // Simulate upload delay
+    setTimeout(() => {
+      const newId = uuidv4()
+      setFileId(newId)
+      setUploadState('success')
+    }, 1500)
   }
 
-  const handleTextShare = (text: string, id: string) => {
+  const handleTextShare = (text: string) => {
     setSharedText(text)
-    setTextId(id)
-    setUploadedFile(null)
-    setFileId(null)
+    setUploadState('uploading')
+    
+    // Simulate processing delay
+    setTimeout(() => {
+      const newId = uuidv4()
+      setTextId(newId)
+      setUploadState('success')
+    }, 1000)
   }
   
   const resetUpload = () => {
-    setUploadedFile(null)
+    setFile(null)
     setFileId(null)
     setSharedText(null)
     setTextId(null)
+    setUploadState('idle')
   }
 
   return (
@@ -48,7 +61,7 @@ export default function Home() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        {!uploadedFile && !sharedText ? (
+        {uploadState === 'idle' && (
           <div className="flex flex-col items-center">
             <div className="flex space-x-4 mb-8">
               <button
@@ -74,7 +87,7 @@ export default function Home() {
             </div>
 
             {shareMode === 'file' ? (
-              <FileUploader onFileUpload={handleFileUpload} />
+              <FileUploader onFileChange={handleFileChange} />
             ) : (
               <TextInput onTextShare={handleTextShare} />
             )}
@@ -92,15 +105,40 @@ export default function Home() {
               </Link>
             </div>
           </div>
-        ) : (
+        )}
+
+        {uploadState === 'uploading' && (
+          <div className="flex flex-col items-center justify-center py-10">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              className="w-16 h-16 border-4 border-primary rounded-full border-t-transparent mb-4"
+            />
+            <p className="text-lg text-gray-300">
+              {shareMode === 'file' ? 'Uploading file...' : 'Processing text...'}
+            </p>
+          </div>
+        )}
+
+        {uploadState === 'success' && (
           <div className="flex flex-col items-center">
-            {uploadedFile && <FilePreview file={uploadedFile} />}
-            {sharedText && <TextPreview text={sharedText} />}
+            {shareMode === 'file' && file && (
+              <>
+                <FilePreview file={file} />
+                <div className="border-t border-white/10 pt-6 mt-2"></div>
+              </>
+            )}
+
+            {shareMode === 'text' && sharedText && (
+              <>
+                <TextPreview text={sharedText} />
+                <div className="border-t border-white/10 pt-6 mt-2"></div>
+              </>
+            )}
             
             {(fileId || textId) && (
               <QRCodeGenerator 
-                fileId={fileId || textId || ''} 
-                fileName={uploadedFile?.name || 'Shared Text'} 
+                shareUrl={`${window.location.origin}/download/${shareMode === 'file' ? fileId : textId}`} 
               />
             )}
             

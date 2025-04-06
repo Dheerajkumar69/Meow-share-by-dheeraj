@@ -1,120 +1,133 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { useDropzone } from 'react-dropzone'
+import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { v4 as uuidv4 } from 'uuid'
 
 interface FileUploaderProps {
-  onFileUpload: (file: File, id: string) => void
+  onFileChange: (file: File) => void
 }
 
-const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
-  const [isLoading, setIsLoading] = useState(false)
+export default function FileUploader({ onFileChange }: FileUploaderProps) {
+  const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) {
-      setError('No file selected')
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      validateAndUploadFile(file)
+    }
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0]
+      validateAndUploadFile(file)
+    }
+  }
+
+  const validateAndUploadFile = (file: File) => {
+    setError(null)
+    
+    if (file.size > 100 * 1024 * 1024) {
+      setError("File size exceeds 100MB limit")
       return
     }
-
-    setError(null)
-    setIsLoading(true)
     
-    const file = acceptedFiles[0]
-    
-    // Simulate upload processing with a slight delay
-    setTimeout(() => {
-      // Generate a unique ID for this file
-      const fileId = uuidv4()
-      
-      // Call the callback with the file and its ID
-      onFileUpload(file, fileId)
-      setIsLoading(false)
-    }, 1500)
-  }, [onFileUpload])
+    onFileChange(file)
+  }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
-    onDrop,
-    multiple: false
-  })
+  const openFileDialog = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
 
   return (
-    <div className="flex flex-col items-center w-full">
-      <motion.div 
-        className="w-full"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+    <div className="w-full">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
         transition={{ duration: 0.3 }}
+        className={`flex flex-col items-center justify-center w-full p-8 border-2 border-dashed rounded-xl transition-all ${
+          isDragging
+            ? "border-primary bg-primary/10"
+            : "border-gray-600 hover:border-primary/50 hover:bg-primary/5"
+        }`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
-        <div 
-          {...getRootProps()} 
-          className={`flex flex-col items-center justify-center w-full p-10 border-2 border-dashed rounded-xl transition-all duration-200 
-            ${isDragActive 
-              ? 'border-primary-500 bg-primary-50' 
-              : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
-            }`}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        
+        <motion.div 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="animate-float"
         >
-          <input {...getInputProps()} />
-          
-          <motion.div
-            className="flex items-center justify-center w-20 h-20 mb-4 text-white bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full"
-            animate={{ 
-              scale: isDragActive ? [1, 1.1, 1] : 1,
-            }}
-            transition={{ 
-              duration: 0.5, 
-              repeat: isDragActive ? Infinity : 0,
-              repeatType: "reverse" 
-            }}
+          <svg
+            className="w-16 h-16 mb-4 text-secondary"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              strokeWidth={1.5} 
-              stroke="currentColor" 
-              className="w-10 h-10"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" 
-              />
-            </svg>
-          </motion.div>
-          
-          {isLoading ? (
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 border-4 border-t-primary-500 border-r-transparent border-b-secondary-500 border-l-transparent rounded-full animate-spin"></div>
-              <p className="mt-4 text-lg font-medium text-gray-700">Processing file...</p>
-            </div>
-          ) : (
-            <div className="text-center">
-              <p className="mb-2 text-lg font-medium text-gray-700">
-                {isDragActive ? "Drop the file here" : "Drag & drop a file here"}
-              </p>
-              <p className="text-sm text-gray-500">or click to select a file</p>
-              <p className="mt-4 text-sm text-gray-400">
-                Support for any file type • Unlimited size
-              </p>
-            </div>
-          )}
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3-3m0 0l3 3m-3-3v12"
+            />
+          </svg>
+        </motion.div>
+
+        <div className="text-center">
+          <h3 className="text-xl font-medium text-gray-200 mb-2">
+            Drag & Drop File
+          </h3>
+          <p className="text-gray-400 mb-4">or</p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            type="button"
+            onClick={openFileDialog}
+            className="button-gradient text-white font-medium py-2 px-6 rounded-full shadow-lg"
+          >
+            Browse Files
+          </motion.button>
+          <p className="mt-3 text-sm text-gray-400">Maximum file size: 100MB</p>
         </div>
+        
+        {error && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 text-red-400 text-sm"
+          >
+            {error}
+          </motion.div>
+        )}
       </motion.div>
-      
-      {error && (
-        <motion.p 
-          className="mt-4 text-sm text-red-500"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          {error}
-        </motion.p>
-      )}
     </div>
   )
-}
-
-export default FileUploader 
+} 
