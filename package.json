@@ -9,19 +9,20 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "framer-motion": "^11.0.0",
+    "@vercel/speed-insights": "^1.2.0",
+    "framer-motion": "^11.18.2",
     "jsqr": "^1.4.0",
     "next": "^14.2.0",
     "qrcode.react": "^3.1.0",
     "react": "^18.3.1",
-    "react-dom": "^18.2.0",
+    "react-dom": "^18.3.1",
     "react-dropzone": "^14.2.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",
     "@types/react": "^18.3.20",
-    "@types/react-dom": "^18.2.14",
+    "@types/react-dom": "^18.3.6",
     "@types/uuid": "^9.0.6",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",

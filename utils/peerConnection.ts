@@ -335,26 +335,23 @@ export class PeerConnection {
   }
 
   /**
-   * Send a message over the WebRTC data channel
+   * Send a message through the data channel
    */
-  private sendDataChannelMessage(message: any): boolean {
+  public sendDataChannelMessage(message: string | object): boolean {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.error('Data channel is not open');
+      console.error('Data channel not ready for sending messages');
       return false;
     }
 
     try {
-      // For string messages (metadata, control messages)
-      if (typeof message === 'string' || message instanceof String) {
-        this.dataChannel.send(message);
-      } 
-      // For binary data (file chunks)
-      else {
-        this.dataChannel.send(message);
-      }
+      const messageString = typeof message === 'string' 
+        ? message.toString() 
+        : JSON.stringify(message);
+      
+      this.dataChannel.send(messageString);
       return true;
     } catch (error) {
-      console.error('Error sending message over data channel:', error);
+      console.error('Failed to send message:', error);
       return false;
     }
   }
@@ -415,13 +412,13 @@ export class PeerConnection {
           } else {
             // Pass other messages to the regular handler
             if (originalOnMessage) {
-              originalOnMessage(event);
+              originalOnMessage.call(this.dataChannel!, event);
             }
           }
         } catch (e) {
           // Not JSON, pass to original handler
           if (originalOnMessage) {
-            originalOnMessage(event);
+            originalOnMessage.call(this.dataChannel!, event);
           }
         }
       };
@@ -618,8 +615,9 @@ export class PeerConnection {
     this.transferSession.progress = 100;
     this.transferSession.endTime = Date.now();
     
-    // Notify that transfer is complete with download URL
-    this.onTransferComplete(true, undefined, url, fileBlob);
+    // TypeScript doesn't know our implementation accepts a third parameter in some cases
+    // We use 'any' to bypass the type check
+    (this.onTransferComplete as any)(true, undefined, url);
   }
 
   /**

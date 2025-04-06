@@ -165,7 +165,22 @@ export default function ReceivePage() {
       
       <AnimatePresence>
         {showScanner && (
-          <QRScanner onClose={() => setShowScanner(false)} />
+          <QRScanner 
+            onClose={() => setShowScanner(false)} 
+            onScan={(result: string) => {
+              setFileId(result);
+              setShowScanner(false);
+              // Automatically submit the form after a successful scan
+              setTimeout(() => {
+                const normalizedFileId = normalizeShortCode(result);
+                if (validateShortCode(normalizedFileId) || normalizedFileId.length > 6) {
+                  router.push(`/download/${normalizedFileId}`);
+                } else {
+                  setError('Invalid QR code format');
+                }
+              }, 500);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>
