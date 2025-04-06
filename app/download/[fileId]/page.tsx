@@ -221,7 +221,7 @@ export default function DownloadPage() {
         peerConnectionRef.current = null
       }
     }
-  }, [fileId, isShortCode, normalizedId, connectionState])
+  }, [isShortCode, normalizedId, contentData, connectionState, isDownloading])
 
   // Handle click on the download button
   const handleDownload = async () => {
@@ -331,7 +331,7 @@ export default function DownloadPage() {
       linkRef.current.click()
       setIsDownloadComplete(true)
     }
-  }, [shouldAutoDownload, downloadUrl, contentData])
+  }, [shouldAutoDownload, downloadUrl, contentData?.name])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-gradient-to-br from-blue-50 to-white">

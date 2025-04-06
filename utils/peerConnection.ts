@@ -679,23 +679,27 @@ export class PeerConnection {
   }
 
   /**
-   * Send a message through the data channel
+   * Send a message via the data channel
    */
-  public sendDataChannelMessage(message: string | object): boolean {
+  private sendDataChannelMessage(message: string | ArrayBuffer | object): boolean {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.error('Data channel not ready for sending messages');
+      console.error('Data channel not ready for sending message');
       return false;
     }
-
+    
     try {
-      const messageString = typeof message === 'string' 
-        ? message.toString() 
-        : JSON.stringify(message);
-      
-      this.dataChannel.send(messageString);
+      // Convert message to the right type for sending
+      if (typeof message === 'string') {
+        this.dataChannel.send(message);
+      } else if (message instanceof ArrayBuffer) {
+        this.dataChannel.send(message);
+      } else if (typeof message === 'object') {
+        // Convert object to JSON string
+        this.dataChannel.send(JSON.stringify(message));
+      }
       return true;
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Error sending data channel message:', error);
       return false;
     }
   }
@@ -839,34 +843,47 @@ export class PeerConnection {
   /**
    * Handle incoming data channel messages
    */
-  private handleDataChannelMessage(data: any): void {
-    // For JSON control messages (metadata, etc.)
-    if (typeof data === 'string') {
+  private handleDataChannelMessage(data: string | ArrayBuffer): void {
+    // For text messages (control messages, metadata)
+    if (typeof data === 'string' || data instanceof String) {
       try {
-        const message = JSON.parse(data);
+        const message = JSON.parse(data.toString());
         
+        // Handle different message types
         switch (message.type) {
           case 'file-metadata':
-            this.handleFileMetadata(message.metadata);
+            this.handleFileMetadata(message.data);
             break;
             
           case 'transfer-complete':
-            this.handleTransferComplete(message.size);
+            this.handleTransferComplete(message.data.size);
             break;
             
           case 'cancel':
             this.handleCancelTransfer(message.reason);
             break;
             
+          case 'ping':
+            // Respond to ping messages to keep connection alive
+            this.sendDataChannelMessage(JSON.stringify({
+              type: 'pong',
+              timestamp: Date.now()
+            }));
+            break;
+            
+          case 'test':
+            // Handle connection test messages
+            this.handleTestMessage(message);
+            break;
+            
           default:
-            console.warn('Unknown message type:', message.type);
+            console.warn('Unknown data channel message type:', message.type);
         }
-      } catch (e) {
-        console.error('Error parsing data channel message:', e);
+      } catch (error) {
+        console.error('Error parsing data channel message:', error, data);
       }
-    } 
-    // For binary data (file chunks)
-    else {
+    } else {
+      // Binary data - file chunk
       this.handleFileChunk(data);
     }
   }
@@ -1224,16 +1241,16 @@ export class PeerConnection {
   }
 
   /**
-   * Perform a test transfer to verify the connection is working
-   * This is useful when we need to test if the connection is actually functional
+   * Test if the connection is ready by sending a test message
    */
   public async testConnection(): Promise<boolean> {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      if (DEBUG) console.log('Cannot test connection - data channel not ready');
-      return false;
-    }
-    
     try {
+      // Check if the data channel is ready
+      if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+        console.log('Data channel not ready for testing connection');
+        return false;
+      }
+      
       // Generate small test data
       const testMessage = {
         type: 'test',
@@ -1241,26 +1258,33 @@ export class PeerConnection {
         timestamp: Date.now()
       };
       
+      // Store reference to avoid null checks later
+      const dataChannel = this.dataChannel;
+      
       return new Promise<boolean>((resolve) => {
         // Set up a one-time handler for test response
-        const originalOnMessage = this.dataChannel!.onmessage;
+        const originalOnMessage = dataChannel.onmessage;
         
         // Set a timeout in case we don't get a response
         const timeout = setTimeout(() => {
-          // Restore original message handler
-          this.dataChannel!.onmessage = originalOnMessage;
+          // Restore original message handler if dataChannel still exists
+          if (dataChannel && dataChannel.readyState === 'open') {
+            dataChannel.onmessage = originalOnMessage;
+          }
           if (DEBUG) console.log('Test connection timed out');
           resolve(false);
         }, 5000);
         
         // Override the message handler temporarily
-        this.dataChannel!.onmessage = (event) => {
+        dataChannel.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
             
             if (message.type === 'test-response') {
               clearTimeout(timeout);
-              this.dataChannel!.onmessage = originalOnMessage;
+              if (dataChannel && dataChannel.readyState === 'open') {
+                dataChannel.onmessage = originalOnMessage;
+              }
               if (DEBUG) console.log('Connection test successful!');
               this.updateConnectionState('connected');
               resolve(true);
@@ -1273,13 +1297,13 @@ export class PeerConnection {
           
           // Call the original message handler for all other messages
           if (originalOnMessage) {
-            originalOnMessage.call(this.dataChannel, event);
+            originalOnMessage.call(dataChannel, event);
           }
         };
         
         // Send the test message
         if (DEBUG) console.log('Sending connection test message');
-        this.sendDataChannelMessage(JSON.stringify(testMessage));
+        this.sendDataChannelMessage(testMessage);
       });
     } catch (error) {
       console.error('Error testing connection:', error);
@@ -1297,137 +1321,5 @@ export class PeerConnection {
       data: 'connection-test-confirmed',
       timestamp: Date.now()
     }));
-  }
-
-  /**
-   * Handle data channel messages
-   */
-  private handleDataChannelMessage(data: string | ArrayBuffer): void {
-    // For text messages (control messages, metadata)
-    if (typeof data === 'string' || data instanceof String) {
-      try {
-        const message = JSON.parse(data.toString());
-        
-        // Handle different message types
-        switch (message.type) {
-          case 'file-metadata':
-            this.handleFileMetadata(message.data);
-            break;
-            
-          case 'transfer-ready':
-            this.handleTransferReady();
-            break;
-            
-          case 'transfer-complete':
-            this.handleTransferComplete(message.data.size);
-            break;
-            
-          case 'cancel':
-            this.handleCancelTransfer(message.reason);
-            break;
-            
-          case 'ping':
-            // Respond to ping messages to keep connection alive
-            this.sendDataChannelMessage(JSON.stringify({
-              type: 'pong',
-              timestamp: Date.now()
-            }));
-            break;
-            
-          case 'test':
-            // Handle connection test messages
-            this.handleTestMessage(message);
-            break;
-            
-          default:
-            console.warn('Unknown data channel message type:', message.type);
-        }
-      } catch (error) {
-        console.error('Error parsing data channel message:', error, data);
-      }
-    } else {
-      // Binary data - file chunk
-      this.handleFileChunk(data);
-    }
-  }
-
-  /**
-   * Handle transfer ready event
-   */
-  private handleTransferReady(): void {
-    if (!this.transferSession) return;
-    
-    this.transferSession.state = 'transferring';
-    this.transferSession.startTime = Date.now();
-    
-    if (DEBUG) console.log('Receiver is ready, starting transfer');
-    
-    // Start sending file data
-    this.startFileTransfer();
-  }
-
-  /**
-   * Start sending file data chunks
-   */
-  private startFileTransfer(): void {
-    if (DEBUG) console.log('Starting file transfer');
-    
-    // Implement file transfer logic here
-    // For now, this is a placeholder for the actual implementation
-    
-    // Simulate successful transfer (for testing)
-    setTimeout(() => {
-      if (this.transferSession) {
-        this.transferSession.progress = 100;
-        this.transferSession.state = 'completed';
-        this.onTransferProgress(100, 1024 * 1024, 1024 * 1024, 1024 * 1024); // 1MB/s
-        this.onTransferComplete(true);
-      }
-    }, 1000);
-  }
-
-  /**
-   * Handle file chunk data
-   */
-  private handleFileChunk(data: ArrayBuffer): void {
-    if (!this.transferSession) return;
-    
-    // Track data received
-    this.receivedSize += data.byteLength;
-    this.fileChunks.push(new Blob([data]));
-    
-    // Calculate progress
-    const totalSize = this.transferSession.metadata?.size || 1;
-    const progress = Math.min(100, Math.floor((this.receivedSize / totalSize) * 100));
-    
-    // Calculate speed periodically (every 500ms)
-    const now = Date.now();
-    if (now - this.lastProgressUpdate > 500 || progress === 100) {
-      if (this.transferSession.startTime) {
-        const elapsedSeconds = (now - this.transferSession.startTime) / 1000;
-        const bytesPerSecond = this.receivedSize / elapsedSeconds;
-        
-        // Update transfer speed
-        this.transferSession.speed = bytesPerSecond;
-        
-        // Report progress
-        this.onTransferProgress(
-          progress, 
-          bytesPerSecond, 
-          this.receivedSize, 
-          totalSize
-        );
-      }
-      
-      this.lastProgressUpdate = now;
-    }
-    
-    // Update progress in the session
-    this.transferSession.progress = progress;
-    
-    // If we've received everything, finalize the transfer
-    if (this.receivedSize === totalSize) {
-      this.handleTransferComplete(totalSize);
-    }
   }
 } 
