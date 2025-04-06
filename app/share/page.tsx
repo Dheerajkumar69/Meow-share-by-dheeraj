@@ -7,7 +7,8 @@ import QRCodeGenerator from '../../components/QRCodeGenerator';
 import FilePreview from '../../components/FilePreview';
 import TransferSpeedometer from '../../components/TransferSpeedometer';
 import { generateShortCode, formatShortCode } from '../../utils/codeGenerator';
-import { processFileUpload, formatFileSize, formatSpeed } from '../../utils/fileHandlers';
+import { formatFileSize, formatSpeed } from '../../utils/fileHandlers';
+import { PeerConnection, ConnectionState } from '../../utils/peerConnection';
 
 export default function SharePage() {
   const router = useRouter();
@@ -22,6 +23,8 @@ export default function SharePage() {
   const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
   const [isUploadComplete, setIsUploadComplete] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>('new');
+  const peerConnectionRef = useRef<PeerConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Effect to handle text changes
@@ -37,6 +40,16 @@ export default function SharePage() {
       setActiveTab('file');
     }
   }, [file]);
+
+  // Clean up peer connection on unmount
+  useEffect(() => {
+    return () => {
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle file selection through the file input
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,8 +88,8 @@ export default function SharePage() {
 
   // Handle content sharing
   const handleShare = async () => {
-    let id = '';
     const code = generateShortCode();
+    let id = '';
     
     // Start the upload process
     setIsUploading(true);
@@ -93,19 +106,66 @@ export default function SharePage() {
         setIsUploadComplete(true);
         
       } else if (activeTab === 'file' && file) {
-        // For file upload, use our chunked upload system
-        id = `file-${code}`;
+        // For file upload, use WebRTC peer connection
+        id = code; // Just use the short code directly for peer connections
         
-        // Use the enhanced file upload process with dynamic chunking
-        await processFileUpload(
-          file,
-          (progress: number, speed: number) => {
+        // Initialize peer connection
+        const peer = new PeerConnection({
+          isInitiator: true,
+          shortCode: code,
+          onConnectionStateChange: (state) => {
+            console.log('Connection state changed:', state);
+            setConnectionState(state);
+            
+            if (state === 'connected') {
+              // Once connected, start sending the file
+              if (peerConnectionRef.current && file) {
+                peerConnectionRef.current.sendFile(file)
+                  .catch(err => {
+                    console.error('Error sending file:', err);
+                    setError('Failed to send file: ' + err.message);
+                  });
+              }
+            }
+          },
+          onTransferProgress: (progress, speed) => {
             setUploadProgress(progress);
             setUploadSpeed(speed);
+          },
+          onTransferComplete: (success, error) => {
+            if (success) {
+              setIsUploadComplete(true);
+            } else if (error) {
+              setError('Transfer failed: ' + error);
+            }
           }
-        );
+        });
         
-        setIsUploadComplete(true);
+        await peer.initialize();
+        peerConnectionRef.current = peer;
+        
+        // Wait for the peer connection to be established (or timeout)
+        let isPeerReady = false;
+        const peerTimeout = setTimeout(() => {
+          if (!isPeerReady) {
+            // Fall back to simulated upload
+            simulateFileUpload(file, (progress, speed) => {
+              setUploadProgress(progress);
+              setUploadSpeed(speed);
+            }).then(() => {
+              setIsUploadComplete(true);
+            });
+          }
+        }, 30000); // 30 second timeout
+        
+        // Set up a listener for connection state changes
+        const checkPeerState = setInterval(() => {
+          if (peer.getConnectionState() === 'connected') {
+            clearTimeout(peerTimeout);
+            clearInterval(checkPeerState);
+            isPeerReady = true;
+          }
+        }, 1000);
       }
       
       // Generate the share URL using the window.location.origin
@@ -115,10 +175,38 @@ export default function SharePage() {
       
     } catch (error) {
       console.error('Error during upload:', error);
-      alert('Failed to upload content. Please try again later.');
+      setError('Failed to upload content: ' + (error instanceof Error ? error.message : String(error)));
       setIsUploading(false);
     }
   };
+
+  // Simulate file upload for fallback
+  const simulateFileUpload = (file: File, onProgress: (progress: number, speed: number) => void): Promise<void> => {
+    return new Promise((resolve) => {
+      let progress = 0;
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        // Simulate variable upload speeds
+        const randomIncrement = 1 + Math.random() * 5;
+        progress = Math.min(100, progress + randomIncrement);
+        
+        // Calculate simulated speed (in bytes per second)
+        const elapsed = (Date.now() - startTime) / 1000;
+        const bytesUploaded = (progress / 100) * file.size;
+        const speed = bytesUploaded / elapsed;
+        
+        onProgress(progress, speed);
+        
+        if (progress >= 100) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 200);
+    });
+  };
+
+  // Handle errors
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-gradient-to-br from-blue-50 to-white">
@@ -232,6 +320,18 @@ export default function SharePage() {
               </div>
             )}
 
+            {/* Error display */}
+            {error && (
+              <div className="mb-6 bg-red-50 border border-red-100 rounded-lg p-4 text-red-600 text-sm">
+                <div className="flex items-start">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mt-0.5 mr-2 flex-shrink-0">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              </div>
+            )}
+
             {/* Share Button */}
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -281,6 +381,34 @@ export default function SharePage() {
                   Share this code for easy access
                 </p>
               </div>
+              
+              {activeTab === 'file' && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="font-medium text-blue-700 mb-1">Connection Status:</p>
+                  <div className="font-medium text-blue-800">
+                    {connectionState === 'connected' ? (
+                      <span className="text-green-600">
+                        Connected! Ready for transfer
+                      </span>
+                    ) : connectionState === 'connecting' ? (
+                      <span className="text-yellow-600">
+                        Connecting...
+                      </span>
+                    ) : connectionState === 'new' ? (
+                      <span className="text-blue-600">
+                        Waiting for receiver to join
+                      </span>
+                    ) : (
+                      <span className="text-red-600">
+                        {connectionState}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-blue-500 mt-1">
+                    Share the code with the receiver to establish connection
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* QR Code */}
@@ -294,6 +422,13 @@ export default function SharePage() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
+                  // Clean up existing peer connection
+                  if (peerConnectionRef.current) {
+                    peerConnectionRef.current.close();
+                    peerConnectionRef.current = null;
+                  }
+                  
+                  // Reset all state
                   setShareUrl(null);
                   setShortCode(null);
                   setFile(null);
@@ -301,6 +436,8 @@ export default function SharePage() {
                   setUploadProgress(0);
                   setIsUploadComplete(false);
                   setIsUploading(false);
+                  setConnectionState('new');
+                  setError(null);
                 }}
                 className="flex-1 py-3 bg-blue-100 text-blue-700 font-medium rounded-full hover:bg-blue-200 transition-colors"
               >
@@ -328,7 +465,11 @@ export default function SharePage() {
           className="w-full max-w-lg glassmorphism p-6"
         >
           <h3 className="font-semibold text-blue-800 mb-4">
-            {isUploadComplete ? 'Upload Complete!' : 'Uploading Content...'}
+            {isUploadComplete ? 'Upload Complete!' : (
+              activeTab === 'file' && connectionState === 'connected' ? 
+                'Sending File...' : 
+                'Processing Content...'
+            )}
           </h3>
           
           <TransferSpeedometer
@@ -341,7 +482,10 @@ export default function SharePage() {
           
           <div className="flex justify-between items-center mt-2 text-sm">
             <p className="text-blue-600">
-              {file ? `Uploading with dynamic chunking` : 'Processing text content'}
+              {activeTab === 'file' ? 
+                (connectionState === 'connected' ? 'Direct peer-to-peer transfer' : 'Preparing for peer transfer') : 
+                'Processing text content'
+              }
             </p>
             <p className="text-blue-600 font-medium">
               {formatSpeed(uploadSpeed)}

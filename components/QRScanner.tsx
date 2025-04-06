@@ -2,186 +2,230 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import jsQR from 'jsqr';
 
-export default function QRScanner({ onClose }: { onClose: () => void }) {
+interface QRScannerProps {
+  onScanSuccess: (data: string) => void;
+  onCancel: () => void;
+}
+
+export default function QRScanner({ onScanSuccess, onCancel }: QRScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(true);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const router = useRouter();
+  const requestRef = useRef<number>();
+  const [hasCamera, setHasCamera] = useState(true);
 
+  // Set up the camera when component mounts
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    
-    const startCamera = async () => {
+    async function setupCamera() {
       try {
-        const constraints = { video: { facingMode: 'environment' } };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const constraints = {
+          video: {
+            facingMode: 'environment', // Use back camera on mobile devices
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute('playsinline', 'true'); // required for iOS
+          videoRef.current.play();
         }
       } catch (err) {
         console.error('Error accessing camera:', err);
-        setCameraError('Unable to access camera. Please check permissions.');
+        setError('Could not access camera. Please check permissions.');
+        setHasCamera(false);
       }
-    };
+    }
 
-    startCamera();
-    
+    setupCamera();
+
+    // Clean up function to stop camera when component unmounts
     return () => {
-      // Stop all camera streams when component unmounts
-      if (stream) {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
       }
-      
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
       }
     };
   }, []);
 
+  // Process video frames for QR code detection
   useEffect(() => {
-    if (!scanning) return;
-    
-    const scanQRCode = () => {
-      if (!videoRef.current || !canvasRef.current || videoRef.current.paused || videoRef.current.ended) return;
+    if (!hasCamera) return;
+
+    const videoElement = videoRef.current;
+    const canvasElement = canvasRef.current;
+
+    if (!videoElement || !canvasElement) return;
+
+    // Wait for video to be ready
+    videoElement.onloadedmetadata = () => {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
       
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
+      // Start scanning
+      scanQRCode();
+    };
+
+    function scanQRCode() {
+      if (!scanning) return;
+
+      const canvasContext = canvasElement.getContext('2d');
       
-      if (!context) return;
-      
-      // Only scan if video is actually playing
-      if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-      
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      // Draw current video frame to canvas
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      // Get image data for QR code scanning
-      try {
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      if (canvasContext && videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+        // Draw video frame to canvas
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        canvasContext.drawImage(
+          videoElement, 
+          0, 
+          0, 
+          canvasElement.width, 
+          canvasElement.height
+        );
         
-        // Use jsQR library to detect QR codes in the image
+        // Get image data from canvas
+        const imageData = canvasContext.getImageData(
+          0, 
+          0, 
+          canvasElement.width, 
+          canvasElement.height
+        );
+        
+        // Scan for QR code
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "dontInvert",
         });
         
+        // If QR code found
         if (code) {
-          // QR code found
-          setScanning(false);
+          console.log('QR code detected:', code.data);
           
-          // Navigate to the detected URL or code
-          try {
-            // Check if it's a URL
-            new URL(code.data);
-            router.push(code.data);
-          } catch (e) {
-            // Not a URL, treat as a code
-            router.push(`/download/${code.data}`);
-          }
+          // Draw borders around the QR code
+          canvasContext.beginPath();
+          canvasContext.moveTo(code.location.topLeftCorner.x, code.location.topLeftCorner.y);
+          canvasContext.lineTo(code.location.topRightCorner.x, code.location.topRightCorner.y);
+          canvasContext.lineTo(code.location.bottomRightCorner.x, code.location.bottomRightCorner.y);
+          canvasContext.lineTo(code.location.bottomLeftCorner.x, code.location.bottomLeftCorner.y);
+          canvasContext.lineTo(code.location.topLeftCorner.x, code.location.topLeftCorner.y);
+          canvasContext.lineWidth = 4;
+          canvasContext.strokeStyle = "#3B82F6";
+          canvasContext.stroke();
+          
+          // Stop scanning and call the success callback
+          setScanning(false);
+          onScanSuccess(code.data);
+          return;
         }
-      } catch (err) {
-        console.error('Error scanning QR code:', err);
       }
-    };
-    
-    // Start scanning at intervals
-    scanIntervalRef.current = setInterval(scanQRCode, 200);
-    
+      
+      // Continue scanning
+      requestRef.current = requestAnimationFrame(scanQRCode);
+    }
+
     return () => {
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [scanning, router]);
+  }, [scanning, hasCamera, onScanSuccess]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-    >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Scan QR Code</h2>
-          <button 
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-blue-700 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <div className="relative w-full max-w-md mx-auto">
+      <div className="overflow-hidden rounded-xl relative aspect-[4/3] bg-black">
+        {/* Video element for camera feed */}
+        <video 
+          ref={videoRef} 
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+        />
         
-        <div className="relative aspect-square w-full bg-black">
-          {cameraError ? (
-            <div className="absolute inset-0 flex items-center justify-center p-4 text-center">
-              <p className="text-white bg-red-500 rounded-lg p-4">
-                {cameraError}
-              </p>
-            </div>
-          ) : (
-            <>
-              <video 
-                ref={videoRef} 
-                className="absolute inset-0 w-full h-full object-cover"
-                autoPlay 
-                playsInline 
-                muted
-              />
-              <canvas ref={canvasRef} className="hidden" />
-              
-              {/* Scanning overlay with transparent window */}
-              <div className="absolute inset-0 p-6">
-                <div className="relative w-full h-full border-2 border-white/50 rounded-lg">
-                  {/* Corner markers */}
-                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-md" />
-                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-md" />
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-md" />
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-md" />
-                  
-                  {/* Scanning animation */}
-                  <div className="absolute inset-0 overflow-hidden">
-                    <motion.div
-                      initial={{ y: 0 }}
-                      animate={{ y: ['0%', '100%', '0%'] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                      className="w-full h-1 bg-blue-500/70"
-                    />
-                  </div>
-                </div>
+        {/* Canvas for QR processing (hidden) */}
+        <canvas 
+          ref={canvasRef} 
+          className="hidden"
+        />
+        
+        {/* Scanning overlay with animated corners */}
+        {scanning && !error && (
+          <div className="absolute inset-0 z-10">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-64 h-64 sm:w-80 sm:h-80 relative">
+                {/* Corner markers */}
+                <motion.div 
+                  className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-blue-500"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+                <motion.div 
+                  className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-blue-500"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+                />
+                <motion.div 
+                  className="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-blue-500"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 1 }}
+                />
+                <motion.div 
+                  className="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-blue-500"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 1.5 }}
+                />
+                
+                {/* Scan line animation */}
+                <motion.div 
+                  className="absolute left-0 right-0 h-1 bg-blue-600 z-20"
+                  initial={{ top: 0 }}
+                  animate={{ top: ['0%', '100%'] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)' }}
+                />
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
         
-        <div className="p-4 text-center bg-gray-50">
-          {scanning ? (
-            <p className="text-gray-600 mb-2">Position QR code within the frame to scan</p>
-          ) : (
-            <p className="text-green-600 mb-2">QR code detected! Redirecting...</p>
-          )}
-          
-          <button 
-            onClick={onClose}
-            className="px-6 py-2 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors font-medium mt-2"
-          >
-            Cancel Scan
-          </button>
-        </div>
+        {/* Error state */}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
+            <div className="text-center p-5 bg-white rounded-lg max-w-xs mx-auto">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mx-auto text-red-500 mb-3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Camera Error</h3>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-    </motion.div>
+      
+      {/* Instructions and cancel button */}
+      <div className="mt-4 text-center">
+        <p className="text-blue-800 mb-3">
+          Position the QR code within the scanning area
+        </p>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-full hover:bg-blue-50 transition-colors"
+        >
+          Cancel Scanning
+        </button>
+      </div>
+    </div>
   );
 } 

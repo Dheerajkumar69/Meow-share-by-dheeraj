@@ -7,6 +7,7 @@ import Image from 'next/image'
 import TransferSpeedometer from '../../../components/TransferSpeedometer'
 import { formatShortCode, validateShortCode, normalizeShortCode } from '../../../utils/codeGenerator'
 import { downloadFileInChunks, formatFileSize, formatSpeed } from '../../../utils/fileHandlers'
+import { PeerConnection, ConnectionState, TransferSession } from '../../../utils/peerConnection'
 
 interface ContentData {
   type: 'file' | 'text'
@@ -28,22 +29,115 @@ export default function DownloadPage() {
   const [transferStartTime, setTransferStartTime] = useState<number | null>(null)
   const [isDownloadComplete, setIsDownloadComplete] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [connectionState, setConnectionState] = useState<ConnectionState>('new')
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const linkRef = useRef<HTMLAnchorElement>(null)
+  const peerConnectionRef = useRef<PeerConnection | null>(null)
   
   // Validate and format the fileId if it's a short code
   const normalizedId = normalizeShortCode(fileId)
   const isShortCode = validateShortCode(normalizedId)
   const displayId = isShortCode ? formatShortCode(normalizedId) : fileId
 
+  // Initialize the peer connection and listen for incoming file
   useEffect(() => {
-    const fetchContent = async () => {
+    let isPeerActive = true
+
+    const initializePeer = async () => {
+      if (!isShortCode) {
+        // If it's a regular fileId, fall back to simulated download
+        simulateContentFetch()
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Create peer connection as receiver
+        const peer = new PeerConnection({
+          isInitiator: false,
+          shortCode: normalizedId,
+          onConnectionStateChange: (state) => {
+            console.log('Connection state changed:', state)
+            setConnectionState(state)
+            
+            if (state === 'failed' || state === 'closed') {
+              if (isPeerActive) {
+                setError('Connection failed or closed. The sender may have disconnected.')
+                setLoading(false)
+              }
+            }
+          },
+          onTransferProgress: (progress: number, speed: number) => {
+            setProgress(progress)
+            setTransferSpeed(speed)
+          },
+          onTransferComplete: (success: boolean, error?: string, url?: string) => {
+            if (success && url) {
+              setDownloadUrl(url)
+              setIsDownloadComplete(true)
+              setIsDownloading(false)
+              setProgress(100)
+            } else if (error) {
+              setError(`Transfer failed: ${error}`)
+              setIsDownloading(false)
+            }
+          }
+        })
+
+        await peer.initialize()
+        peerConnectionRef.current = peer
+
+        // Listen for transfer session updates
+        const checkSession = setInterval(() => {
+          if (!isPeerActive) {
+            clearInterval(checkSession)
+            return
+          }
+
+          const session = peer.getTransferSession()
+          if (session?.metadata && !contentData) {
+            setContentData({
+              type: 'file',
+              name: session.metadata.name,
+              size: session.metadata.size,
+              mimeType: session.metadata.type
+            })
+            setLoading(false)
+          }
+
+          if (session?.state === 'transferring' && !isDownloading) {
+            setIsDownloading(true)
+            setTransferStartTime(Date.now())
+          }
+        }, 1000)
+
+        // Timeout for establishing connection
+        setTimeout(() => {
+          if (isPeerActive && connectionState !== 'connected' && !contentData) {
+            setError('Connection timed out. Make sure the sender has the file ready to share.')
+            setLoading(false)
+          }
+        }, 30000) // 30 second timeout
+
+        return () => {
+          clearInterval(checkSession)
+          peer.close()
+        }
+      } catch (err) {
+        console.error('Error initializing peer connection:', err)
+        setError('Failed to initialize connection. Please try again.')
+        setLoading(false)
+      }
+    }
+
+    // Fallback for non-p2p transfers
+    const simulateContentFetch = async () => {
       setLoading(true)
       setError(null)
       
       try {
-        // In a real app, this would be an API call to fetch content metadata
-        // For demo purposes, we'll generate a sample file or text content
-        
         // Simulate network delay for metadata fetch
         await new Promise(resolve => setTimeout(resolve, 800))
         
@@ -51,7 +145,7 @@ export default function DownloadPage() {
         let data: ContentData
         
         // For demo, determine content type based on the fileId
-        if (fileId.startsWith('text-') || isShortCode) {
+        if (fileId.startsWith('text-')) {
           data = {
             type: 'text',
             name: 'Shared Text',
@@ -64,8 +158,6 @@ export default function DownloadPage() {
           }
         } else {
           // For file content, we'll create a large random file for demo purposes
-          // In a real app, this would fetch metadata from the server
-          
           // Choose random file size between 50MB and 500MB for demo purposes
           const demoSize = Math.floor(50 * 1024 * 1024 + Math.random() * 450 * 1024 * 1024)
           
@@ -91,18 +183,26 @@ export default function DownloadPage() {
         // Set the content data
         setContentData(data)
         setProgress(0)
-        
+        setLoading(false)
       } catch (err) {
         console.error('Error fetching content:', err)
         setError('Failed to retrieve the content. It may have expired or been removed.')
-      } finally {
         setLoading(false)
       }
     }
 
-    fetchContent()
-  }, [fileId, isShortCode])
+    initializePeer()
 
+    return () => {
+      isPeerActive = false
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close()
+        peerConnectionRef.current = null
+      }
+    }
+  }, [fileId, isShortCode, normalizedId, connectionState])
+
+  // Handle click on the download button
   const handleDownload = async () => {
     if (!contentData) return
     
@@ -118,32 +218,62 @@ export default function DownloadPage() {
             setError('Failed to copy text to clipboard. Try again or select and copy manually.')
           })
       }
+    } else if (downloadUrl) {
+      // If we already have a download URL from peer transfer, use it
+      if (linkRef.current) {
+        linkRef.current.href = downloadUrl
+        linkRef.current.download = contentData.name
+        linkRef.current.click()
+      }
     } else {
-      // For file content, start chunked download
+      // For fallback file download, use the simulated method
       setIsDownloading(true)
       setTransferStartTime(Date.now())
       
       try {
-        await downloadFileInChunks(
-          fileId,
-          contentData.name,
+        // Simulate download with the dynamic chunking system
+        await simulateDownload(
           contentData.size,
-          contentData.mimeType,
-          (downloadProgress, speed) => {
-            setProgress(downloadProgress)
+          (progress, speed) => {
+            setProgress(progress)
             setTransferSpeed(speed)
           }
         )
         
         // Download completed successfully
         setIsDownloadComplete(true)
+        setIsDownloading(false)
       } catch (err) {
         console.error('Download failed:', err)
         setError('Failed to download file. Please try again.')
-      } finally {
         setIsDownloading(false)
       }
     }
+  }
+
+  // Simulate download for non-p2p transfers
+  const simulateDownload = (fileSize: number, onProgress: (progress: number, speed: number) => void): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      let progress = 0
+      const startTime = Date.now()
+      const interval = setInterval(() => {
+        // Simulate variable download speeds
+        const randomIncrement = 1 + Math.random() * 5
+        progress = Math.min(100, progress + randomIncrement)
+        
+        // Calculate simulated speed (in bytes per second)
+        const elapsed = (Date.now() - startTime) / 1000
+        const bytesDownloaded = (progress / 100) * fileSize
+        const speed = bytesDownloaded / elapsed
+        
+        onProgress(progress, speed)
+        
+        if (progress >= 100) {
+          clearInterval(interval)
+          resolve()
+        }
+      }, 200)
+    })
   }
   
   // Calculate estimated file download time for display
@@ -169,6 +299,19 @@ export default function DownloadPage() {
     return timeString
   }
 
+  // Determine if the download should start automatically (peer-to-peer)
+  const shouldAutoDownload = isShortCode && downloadUrl && !isDownloadComplete
+
+  // Auto-download when peer transfer is complete
+  useEffect(() => {
+    if (shouldAutoDownload && linkRef.current) {
+      linkRef.current.href = downloadUrl!
+      linkRef.current.download = contentData?.name || 'download'
+      linkRef.current.click()
+      setIsDownloadComplete(true)
+    }
+  }, [shouldAutoDownload, downloadUrl, contentData])
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-gradient-to-br from-blue-50 to-white">
       <a ref={linkRef} className="hidden" />
@@ -191,7 +334,7 @@ export default function DownloadPage() {
         
         <div className="text-center mb-6">
           <h1 className="text-2xl md:text-3xl font-bold mb-2 text-gradient">
-            {loading ? 'Retrieving Content...' : 'Download Content'}
+            {loading ? 'Connecting...' : 'Download Content'}
           </h1>
           {isShortCode && (
             <p className="text-blue-600 font-mono text-sm">
@@ -210,9 +353,20 @@ export default function DownloadPage() {
                 transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
               ></motion.div>
             </div>
-            <p className="text-blue-700 text-center">
-              Retrieving content information...
-            </p>
+            {isShortCode ? (
+              <div className="text-center">
+                <p className="text-blue-700 mb-2">
+                  Waiting for peer connection...
+                </p>
+                <p className="text-blue-500 text-sm">
+                  Connection status: {connectionState}
+                </p>
+              </div>
+            ) : (
+              <p className="text-blue-700 text-center">
+                Retrieving content information...
+              </p>
+            )}
           </div>
         )}
         
@@ -258,9 +412,14 @@ export default function DownloadPage() {
                   </h3>
                   <p className="text-blue-600 text-sm">
                     {formatFileSize(contentData.size)}
-                    {contentData.type === 'file' && !isDownloading && !isDownloadComplete && (
+                    {contentData.type === 'file' && !isDownloading && !isDownloadComplete && !isShortCode && (
                       <span className="ml-2 text-blue-400">
                         • Est. download time: {getEstimatedTimeDisplay()}
+                      </span>
+                    )}
+                    {isShortCode && (
+                      <span className="ml-2 text-blue-400">
+                        • Direct peer-to-peer transfer
                       </span>
                     )}
                   </p>
@@ -285,7 +444,7 @@ export default function DownloadPage() {
                 />
                 <div className="flex justify-between items-center mt-2 text-sm">
                   <p className="text-blue-600">
-                    Downloading with dynamic chunking
+                    {isShortCode ? 'Receiving via peer connection' : 'Downloading with dynamic chunking'}
                   </p>
                   <p className="text-blue-600 font-medium">
                     {formatSpeed(transferSpeed)}

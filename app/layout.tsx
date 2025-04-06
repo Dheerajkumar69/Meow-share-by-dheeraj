@@ -1,17 +1,13 @@
-import React from 'react';
+import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import './globals.css'
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-})
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Meow Share - Easy File & Text Sharing',
-  description: 'Share files and text snippets easily with Meow Share',
+  title: 'QuickShare - Fast File & Text Sharing',
+  description: 'Securely share files and text with others using our easy-to-use platform',
 }
 
 export default function RootLayout({
@@ -20,8 +16,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${inter.variable}`}>
-      <body className="antialiased">{children}</body>
+    <html lang="en">
+      <body className={inter.className}>
+        {children}
+        <SpeedInsights />
+      </body>
     </html>
   )
 } 
