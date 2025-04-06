@@ -96,6 +96,7 @@ export default function SharePage() {
     setShortCode(code);
     setUploadProgress(0);
     setUploadStartTime(Date.now());
+    setError(null);
     
     try {
       if (activeTab === 'text' && text.trim()) {
@@ -118,12 +119,22 @@ export default function SharePage() {
             setConnectionState(state);
             
             if (state === 'connected') {
-              // Once connected, start sending the file
-              if (peerConnectionRef.current && file) {
-                peerConnectionRef.current.sendFile(file)
-                  .catch(err => {
-                    console.error('Error sending file:', err);
-                    setError('Failed to send file: ' + err.message);
+              // Once connected, test the connection and start sending the file
+              if (peerConnectionRef.current) {
+                // Test the connection first
+                peerConnectionRef.current.testConnection()
+                  .then(isConnected => {
+                    if (isConnected && peerConnectionRef.current && file) {
+                      console.log('Connection test successful, sending file');
+                      peerConnectionRef.current.sendFile(file)
+                        .catch(err => {
+                          console.error('Error sending file:', err);
+                          setError('Failed to send file: ' + err.message);
+                        });
+                    } else {
+                      console.error('Connection test failed');
+                      setError('Connection test failed. Please try again.');
+                    }
                   });
               }
             }
@@ -149,6 +160,7 @@ export default function SharePage() {
         const peerTimeout = setTimeout(() => {
           if (!isPeerReady) {
             // Fall back to simulated upload
+            setError('Connection timeout - using simulated transfer instead');
             simulateFileUpload(file, (progress, speed) => {
               setUploadProgress(progress);
               setUploadSpeed(speed);
@@ -164,6 +176,16 @@ export default function SharePage() {
             clearTimeout(peerTimeout);
             clearInterval(checkPeerState);
             isPeerReady = true;
+          } else if (peer.getConnectionState() === 'failed') {
+            clearTimeout(peerTimeout);
+            clearInterval(checkPeerState);
+            setError('Connection failed - using simulated transfer instead');
+            simulateFileUpload(file, (progress, speed) => {
+              setUploadProgress(progress);
+              setUploadSpeed(speed);
+            }).then(() => {
+              setIsUploadComplete(true);
+            });
           }
         }, 1000);
       }

@@ -62,7 +62,22 @@ export default function DownloadPage() {
             console.log('Connection state changed:', state)
             setConnectionState(state)
             
-            if (state === 'failed' || state === 'closed') {
+            if (state === 'connected') {
+              // Test the connection when connected
+              setTimeout(() => {
+                if (peer && isPeerActive) {
+                  peer.testConnection()
+                    .then(isConnected => {
+                      if (isConnected) {
+                        console.log("Connection test successful, ready for file transfer")
+                      } else {
+                        console.error("Connection test failed")
+                        setError("Connection test failed. Please ensure the sender is still connected.")
+                      }
+                    })
+                }
+              }, 1000)
+            } else if (state === 'failed' || state === 'closed') {
               if (isPeerActive) {
                 setError('Connection failed or closed. The sender may have disconnected.')
                 setLoading(false)
@@ -118,6 +133,9 @@ export default function DownloadPage() {
           if (isPeerActive && connectionState !== 'connected' && !contentData) {
             setError('Connection timed out. Make sure the sender has the file ready to share.')
             setLoading(false)
+            
+            // Fall back to simulated download after timeout
+            simulateContentFetch()
           }
         }, 30000) // 30 second timeout
 
@@ -129,6 +147,9 @@ export default function DownloadPage() {
         console.error('Error initializing peer connection:', err)
         setError('Failed to initialize connection. Please try again.')
         setLoading(false)
+        
+        // Fall back to simulated download after error
+        simulateContentFetch()
       }
     }
 
