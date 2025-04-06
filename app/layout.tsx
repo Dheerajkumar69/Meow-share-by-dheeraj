@@ -7,19 +7,21 @@ import { Analytics } from "@vercel/analytics/react"
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'QuickShare - Fast File & Text Sharing',
-  description: 'Securely share files and text with others using our easy-to-use platform',
+  title: 'Simple File Sharing - App Router',
+  description: 'App Router routes for the Simple File Sharing platform',
 }
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        {children}
+      <body>
+        <div className="min-h-screen bg-gray-50">
+          {children}
+        </div>
         <SpeedInsights />
         <Analytics />
       </body>
