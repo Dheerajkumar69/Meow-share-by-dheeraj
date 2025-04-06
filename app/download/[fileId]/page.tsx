@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
+import Header from '../../../components/Header'
 
 export default function DownloadPage() {
   const params = useParams<{ fileId: string }>()
@@ -39,9 +40,11 @@ export default function DownloadPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 p-4">
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50">
+      <Header />
+      
       <motion.div 
-        className="w-full max-w-md p-6 glassmorphism"
+        className="w-full max-w-md p-6 my-12 glassmorphism"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -59,12 +62,12 @@ export default function DownloadPage() {
               <path 
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
-                d="M7.5 7.5h-.75A2.25 2.25 0 004.5 9.75v7.5a2.25 2.25 0 002.25 2.25h7.5a2.25 2.25 0 002.25-2.25v-7.5a2.25 2.25 0 00-2.25-2.25h-.75m-6 3.75l3 3m0 0l3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25h-7.5a2.25 2.25 0 01-2.25-2.25v-.75" 
+                d="M7.5 7.5h-.75A2.25 2.25 0 004.5 9.75v7.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0021 18.75v-7.5A2.25 2.25 0 0018.75 9h-.75m-6 3.75l3 3m0 0l3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25h-7.5A2.25 2.25 0 0112 18.75v-.75" 
               />
             </svg>
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-            ShareDrop
+            Meow Share
           </h1>
         </div>
         
@@ -115,8 +118,8 @@ export default function DownloadPage() {
         )}
       </motion.div>
       
-      <footer className="mt-8 text-center text-sm text-gray-600">
-        <p>© {new Date().getFullYear()} ShareDrop. All rights reserved.</p>
+      <footer className="w-full py-6 text-center text-gray-600">
+        <p>© {new Date().getFullYear()} Meow Share. Made with ❤️ by Dheeraj</p>
       </footer>
     </div>
   )
