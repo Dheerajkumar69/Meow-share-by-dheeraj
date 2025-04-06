@@ -5,11 +5,23 @@
 
 import { generateShortCode } from './codeGenerator';
 
-// Default STUN servers for NAT traversal
+// Debug mode for verbose logging
+const DEBUG = true;
+
+// Default ICE servers for NAT traversal
 const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.stunprotocol.org:3478' },
+  // Free TURN server from Twilio (should be replaced with your own in production)
+  {
+    urls: 'turn:global.turn.twilio.com:3478?transport=udp',
+    username: 'f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d',
+    credential: 'w1WpRk/J+Xr+iy+mHo/soJz9WTHQHPOnl5kGnddXMQY='
+  }
 ];
 
 // Connection states
@@ -107,7 +119,7 @@ export class PeerConnection {
     this.isInitiator = options.isInitiator || false;
     this.sessionId = options.sessionId || `session-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.shortCode = options.shortCode || generateShortCode();
-    this.signalServer = options.signalServer || `https://quickshare-signal.vercel.app/api/signal`;
+    this.signalServer = options.signalServer || `/api/signal`;
   }
 
   /**
@@ -167,6 +179,8 @@ export class PeerConnection {
 
     // Handle ICE candidates
     this.peerConnection.onicecandidate = (event) => {
+      if (DEBUG) console.log('ICE candidate:', event.candidate);
+      
       if (event.candidate) {
         this.sendSignalingMessage({
           type: 'ice-candidate',
@@ -182,6 +196,8 @@ export class PeerConnection {
       if (!this.peerConnection) return;
       
       const state = this.peerConnection.connectionState as ConnectionState;
+      if (DEBUG) console.log('Connection state changed to:', state);
+      
       this.updateConnectionState(state);
       
       // Handle various connection states
@@ -198,7 +214,12 @@ export class PeerConnection {
 
     // Handle ICE connection state changes
     this.peerConnection.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', this.peerConnection?.iceConnectionState);
+      if (DEBUG) console.log('ICE connection state:', this.peerConnection?.iceConnectionState);
+    };
+    
+    // Track gathering state
+    this.peerConnection.onicegatheringstatechange = () => {
+      if (DEBUG) console.log('ICE gathering state:', this.peerConnection?.iceGatheringState);
     };
   }
 
@@ -667,26 +688,45 @@ export class PeerConnection {
       }
       
       try {
-        const response = await fetch(`${this.signalServer}?shortCode=${this.shortCode}&sessionId=${this.sessionId}`);
+        if (DEBUG) console.log(`Polling signaling server for messages: ${this.shortCode}`);
+        
+        const response = await fetch(`${this.signalServer}?shortCode=${this.shortCode}&sessionId=${this.sessionId}`, {
+          // Add cache-busting to prevent cached responses
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
         
         if (response.ok) {
           const messages = await response.json();
+          
+          if (DEBUG && messages.length > 0) {
+            console.log(`Received ${messages.length} messages from signaling server`);
+          }
           
           // Process each message
           for (const message of messages) {
             await this.handleSignalingMessage(message);
           }
+        } else {
+          console.error(`Signaling server responded with status: ${response.status}`);
         }
       } catch (error) {
         console.error('Error polling signaling server:', error);
       }
       
-      // Continue polling if not connected
+      // Continue polling if not connected, with shorter interval for faster response
       if (this.connectionState !== 'connected') {
-        setTimeout(pollSignalingServer, 1000);
+        setTimeout(pollSignalingServer, 600);
+      } else {
+        // Less frequent polling when connected
+        setTimeout(pollSignalingServer, 3000);
       }
     };
     
+    // Start polling immediately
     pollSignalingServer();
   }
 

@@ -90,19 +90,19 @@ export default function ReceivePage() {
                   value={fileId}
                   onChange={handleInputChange}
                   onBlur={formatInput}
-                  placeholder="Enter code (e.g. ABC-123)"
+                  placeholder="Enter code (e.g. ABC123)"
                   className="w-full px-4 py-3 rounded-xl border border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-gray-700 transition-all"
                 />
                 
-                {isFormattedInput && !fileId.includes('-') && (
+                {isFormattedInput && fileId.includes('-') && (
                   <motion.button
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     type="button"
-                    onClick={formatInput}
+                    onClick={() => setFileId(normalizeShortCode(fileId))}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full"
                   >
-                    Format
+                    Remove Format
                   </motion.button>
                 )}
               </div>
@@ -154,7 +154,7 @@ export default function ReceivePage() {
               <h2 className="text-xl font-semibold text-blue-800 mb-2">How to Receive</h2>
               <ul className="text-blue-700 text-sm space-y-2 list-disc pl-5">
                 <li>Ask the sender for the 6-digit share code</li>
-                <li>Enter the code above (with or without dash)</li>
+                <li>Enter the code above exactly as provided</li>
                 <li>Or scan the QR code they shared with you</li>
                 <li>Access and download the shared content</li>
               </ul>

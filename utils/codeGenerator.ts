@@ -32,15 +32,15 @@ export function validateShortCode(code: string): boolean {
 }
 
 /**
- * Formats a short code for display with a dash in the middle
+ * Formats a short code for display (no longer adds a dash)
  * @param code - The 6-digit code to format
- * @returns Formatted code (e.g., "ABC-DEF")
+ * @returns Formatted code (e.g., "ABCDEF")
  */
 export function formatShortCode(code: string): string {
   if (!validateShortCode(code)) return code;
   
-  // Insert a dash in the middle (e.g., "ABCDEF" -> "ABC-DEF")
-  return `${code.slice(0, 3)}-${code.slice(3)}`;
+  // Return the code without formatting
+  return code;
 }
 
 /**
