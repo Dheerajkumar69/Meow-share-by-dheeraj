@@ -38,7 +38,7 @@ export default function QRCodeGenerator({ shareUrl }: QRCodeGeneratorProps) {
     >
       <div className="text-center">
         <h2 className="text-2xl font-bold mb-2 text-gradient">Sharing Link Ready!</h2>
-        <p className="text-gray-300">
+        <p className="text-blue-600">
           Use the QR code or link below to share your content
         </p>
       </div>
@@ -49,8 +49,8 @@ export default function QRCodeGenerator({ shareUrl }: QRCodeGeneratorProps) {
           size={200}
           level="H"
           className="rounded"
-          bgColor="rgba(255, 255, 255, 0.1)"
-          fgColor="#ffffff"
+          bgColor="rgba(255, 255, 255, 0.7)"
+          fgColor="#1E40AF"
           imageSettings={{
             src: '/images/logo.png',
             excavate: true,
@@ -61,12 +61,12 @@ export default function QRCodeGenerator({ shareUrl }: QRCodeGeneratorProps) {
       </div>
 
       <div className="flex flex-col w-full">
-        <div className="flex items-center gap-2 rounded-xl bg-card p-2 pr-1 w-full overflow-hidden">
+        <div className="flex items-center gap-2 rounded-xl bg-blue-50 p-2 pr-1 w-full overflow-hidden border border-blue-100">
           <input
             type="text"
             value={shareUrl}
             readOnly
-            className="flex-1 px-3 py-2 bg-transparent text-white text-sm truncate focus:outline-none"
+            className="flex-1 px-3 py-2 bg-transparent text-blue-900 text-sm truncate focus:outline-none"
           />
           <motion.button
             whileHover={{ scale: 1.05 }}

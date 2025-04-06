@@ -31,13 +31,13 @@ export default function TextPreview({ text }: TextPreviewProps) {
       <div className="flex flex-col space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-medium text-gradient">Shared Text</h3>
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-blue-600">
             {text.length} character{text.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         <div className="glassmorphism p-4 rounded-xl">
-          <pre className="w-full max-h-48 overflow-auto whitespace-pre-wrap break-words text-white/90 font-mono text-sm">
+          <pre className="w-full max-h-48 overflow-auto whitespace-pre-wrap break-words text-blue-900 font-mono text-sm">
             {text}
           </pre>
         </div>
