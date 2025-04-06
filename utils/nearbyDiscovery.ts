@@ -121,30 +121,20 @@ export class NearbyDiscovery {
       this.updateStatus('scanning');
       
       // Request device with our service UUID
-      if (!navigator.bluetooth) {
-        throw new Error('Bluetooth API not available');
-      }
-      
-      const device = await navigator.bluetooth.requestDevice({
+      this.bluetoothDevice = await navigator.bluetooth?.requestDevice({
         filters: [{ services: [SERVICE_UUID] }],
         optionalServices: [SERVICE_UUID]
       });
       
-      if (!device) {
+      if (!this.bluetoothDevice) {
         throw new Error('No device selected');
       }
-      
-      this.bluetoothDevice = device;
       
       // Add event listener for disconnection
       this.bluetoothDevice.addEventListener('gattserverdisconnected', this.handleDisconnection.bind(this));
       
       // Connect to the GATT server
-      if (!this.bluetoothDevice.gatt) {
-        throw new Error('GATT server not available on this device');
-      }
-      
-      this.gattServer = await this.bluetoothDevice.gatt.connect();
+      this.gattServer = await this.bluetoothDevice.gatt?.connect();
       
       if (!this.gattServer) {
         throw new Error('Failed to connect to GATT server');
@@ -264,24 +254,7 @@ export class NearbyDiscovery {
    * Handle disconnection event
    */
   private handleDisconnection(event: Event): void {
-    // Fix for TS error - safely cast with type checking using a more robust approach
-    const target = event.target;
-    
-    // Type guard function to check if it's a BluetoothDevice
-    const isBluetoothDevice = (obj: any): obj is BluetoothDevice => {
-      return obj !== null && 
-             typeof obj === 'object' && 
-             'id' in obj &&
-             typeof obj.id === 'string';
-    };
-    
-    if (!target || !isBluetoothDevice(target)) {
-      console.error('Invalid device in disconnection event');
-      return;
-    }
-    
-    // Now safe to use as the correct type
-    const device = target;
+    const device = event.target as BluetoothDevice;
     
     // Find the device in our map and remove it
     Array.from(this.discoveredDevices.entries()).forEach(([id, discoveredDevice]) => {
@@ -301,25 +274,7 @@ export class NearbyDiscovery {
    * Handle characteristic value changed event
    */
   private handleCharacteristicValueChanged(event: Event): void {
-    // Fix for TS error - safely cast with type checking using a more robust approach
-    const target = event.target;
-    
-    // Type guard function to check if it's a BluetoothRemoteGATTCharacteristic
-    const isGattCharacteristic = (obj: any): obj is BluetoothRemoteGATTCharacteristic => {
-      return obj !== null && 
-             typeof obj === 'object' && 
-             'value' in obj &&
-             typeof obj.readValue === 'function' &&
-             typeof obj.startNotifications === 'function';
-    };
-    
-    if (!target || !isGattCharacteristic(target)) {
-      console.error('Invalid characteristic in value changed event');
-      return;
-    }
-    
-    // Now safe to use as the correct type
-    const characteristic = target;
+    const characteristic = event.target as BluetoothRemoteGATTCharacteristic;
     const value = characteristic.value;
     
     if (!value) return;
