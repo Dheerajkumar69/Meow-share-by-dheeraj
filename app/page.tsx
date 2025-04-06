@@ -68,7 +68,7 @@ export default function Home() {
       </motion.div>
       
       <footer className="w-full py-6 text-center text-gray-600">
-        <p>© {new Date().getFullYear()} ShareDrop. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} Meow Share. Made with ❤️ by Dheeraj</p>
       </footer>
     </div>
   )

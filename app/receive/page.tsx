@@ -24,11 +24,15 @@ export default function ReceivePage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 p-4">
       <motion.div 
-        className="w-full max-w-md p-6 glassmorphism"
+        className="w-full max-w-4xl p-8 my-12 glassmorphism"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
+        <h1 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
+          Receive Files with Meow Share
+        </h1>
+
         <div className="flex items-center justify-center mb-6">
           <div className="flex items-center justify-center w-12 h-12 mr-4 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg">
             <svg 
