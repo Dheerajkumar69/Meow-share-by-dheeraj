@@ -1,0 +1,50 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model FileShare {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  chunkSize   Int      @default(5242880) // 5MB chunks
+  totalChunks Int
+  uploadedChunks Int   @default(0)
+  downloadCount Int   @default(0)
+  maxDownloads Int   @default(1) // One-time download by default
+  expiresAt   DateTime
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  chunks      FileChunk[]
+  
+  @@map("file_shares")
+}
+
+model FileChunk {
+  id          String   @id @default(cuid())
+  fileShareId String
+  chunkIndex  Int
+  chunkSize   Int
+  checksum    String?
+  isUploaded  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  fileShare   FileShare @relation(fields: [fileShareId], references: [id], onDelete: Cascade)
+  
+  @@unique([fileShareId, chunkIndex])
+  @@map("file_chunks")
+}
